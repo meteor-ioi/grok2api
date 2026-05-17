@@ -139,6 +139,39 @@ class ModelService:
             display_name="Grok 4.20 Beta"
         ),
         ModelInfo(
+            model_id="grok-4.20-fast",
+            grok_model="grok-420",
+            rate_limit_model="fast",
+            model_mode="MODEL_MODE_FAST",
+            cost=Cost.LOW,
+            display_name="Grok 4.20 Fast"
+        ),
+        ModelInfo(
+            model_id="grok-4.20-auto",
+            grok_model="grok-420",
+            rate_limit_model="auto",
+            model_mode="MODEL_MODE_AUTO",
+            cost=Cost.LOW,
+            display_name="Grok 4.20 Auto"
+        ),
+        ModelInfo(
+            model_id="grok-4.20-expert",
+            grok_model="grok-420",
+            rate_limit_model="expert",
+            model_mode="MODEL_MODE_EXPERT",
+            cost=Cost.HIGH,
+            display_name="Grok 4.20 Expert"
+        ),
+        ModelInfo(
+            model_id="grok-4.20-heavy",
+            grok_model="grok-420",
+            rate_limit_model="grok-420-heavy",
+            model_mode="MODEL_MODE_HEAVY",
+            cost=Cost.HIGH,
+            tier=Tier.SUPER,
+            display_name="Grok 4.20 Heavy"
+        ),
+        ModelInfo(
             model_id="grok-imagine-1.0",
             grok_model="grok-3",
             rate_limit_model="grok-3",
