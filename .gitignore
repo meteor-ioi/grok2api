@@ -53,8 +53,9 @@ wrangler.ci.toml
 logs/
 *.log
 
-# Data (runtime)
+# Data
 data/
+app/data/
 
 # Testing
 .pytest_cache/

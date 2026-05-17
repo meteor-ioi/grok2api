@@ -1,80 +1,55 @@
 services:
   grok2api:
     container_name: grok2api
-    image: ${GROK2API_IMAGE:-ghcr.io/tqzhr/grok2api:latest}
+    image: ghcr.io/chenyme/grok2api:latest
     ports:
-      - "${GROK2API_PORT:-8000}:${SERVER_PORT:-8000}"
+      - "${HOST_PORT:-8000}:${SERVER_PORT:-8000}"
     environment:
-      TZ: ${TZ:-Asia/Shanghai}
+      TZ: Asia/Shanghai
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SERVER_HOST: ${SERVER_HOST:-0.0.0.0}
       SERVER_PORT: ${SERVER_PORT:-8000}
       SERVER_WORKERS: ${SERVER_WORKERS:-1}
-      SERVER_STORAGE_TYPE: ${SERVER_STORAGE_TYPE:-local}
-      SERVER_STORAGE_URL: "${SERVER_STORAGE_URL:-}"
-      STORAGE_WAIT_TIMEOUT: ${STORAGE_WAIT_TIMEOUT:-60}
+      ACCOUNT_STORAGE: ${ACCOUNT_STORAGE:-local}
+      ACCOUNT_LOCAL_PATH: ${ACCOUNT_LOCAL_PATH:-data/accounts.db}
+      ACCOUNT_REDIS_URL: ${ACCOUNT_REDIS_URL:-}
+      ACCOUNT_MYSQL_URL: ${ACCOUNT_MYSQL_URL:-}
+      ACCOUNT_POSTGRESQL_URL: ${ACCOUNT_POSTGRESQL_URL:-}
+      # 启用 CF 自动刷新: 取消以下三行注释，并取消底部 flaresolverr 服务的注释
+      # FLARESOLVERR_URL: http://flaresolverr:8191
+      # CF_REFRESH_INTERVAL: "600"
+      # CF_TIMEOUT: "60"
+
+      # ACCOUNT_STORAGE: local | redis | mysql | postgresql
+      # ACCOUNT_LOCAL_PATH: SQLite path when ACCOUNT_STORAGE=local
+      # ACCOUNT_REDIS_URL: Redis DSN when ACCOUNT_STORAGE=redis
+      # ACCOUNT_MYSQL_URL: MySQL DSN when ACCOUNT_STORAGE=mysql
+      # ACCOUNT_POSTGRESQL_URL: PostgreSQL DSN when ACCOUNT_STORAGE=postgresql
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-    shm_size: "1gb"
-    init: true
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import os,urllib.request; p=os.getenv('SERVER_PORT','8000'); urllib.request.urlopen(f'http://127.0.0.1:{p}/health', timeout=2).read();"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 40s
 
-  redis:
-    profiles: ["redis"]
-    container_name: grok2api-redis
-    image: redis:7-alpine
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
+  # 如果出口 IP 不干净，可取消以下注释使用 Warp 作为落地代理
+  # 启用后将 proxy.base_proxy_url 设为 socks5://warp:1080
+  # warp:
+  #   container_name: warp
+  #   image: caomingjun/warp:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:1080:1080"
+  #   environment:
+  #     - WARP_SLEEP=2
+  #   cap_add:
+  #     - NET_ADMIN
 
-  pgsql:
-    profiles: ["pgsql"]
-    container_name: grok2api-pgsql
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${PGSQL_DB:-grok2api}
-      POSTGRES_USER: ${PGSQL_USER:-grok2api}
-      POSTGRES_PASSWORD: ${PGSQL_PASSWORD:-grok2api}
-    volumes:
-      - pgsql-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PGSQL_USER:-grok2api} -d ${PGSQL_DB:-grok2api}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  mysql:
-    profiles: ["mysql"]
-    container_name: grok2api-mysql
-    image: mysql:8.4
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DB:-grok2api}
-      MYSQL_USER: ${MYSQL_USER:-grok2api}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-grok2api}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-grok2api}
-    volumes:
-      - mysql-data:/var/lib/mysql
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD:-grok2api} --silent"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-volumes:
-  redis-data:
-  pgsql-data:
-  mysql-data:
+  # 启用 CF 自动刷新时取消以下注释
+  # flaresolverr:
+  #   container_name: flaresolverr
+  #   image: ghcr.io/flaresolverr/flaresolverr:latest
+  #   ports:
+  #     - "127.0.0.1:8191:8191"
+  #   environment:
+  #     TZ: Asia/Shanghai
+  #     LOG_LEVEL: info
+  #   restart: unless-stopped
