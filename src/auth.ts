@@ -74,8 +74,10 @@ export const requireApiAuth: MiddlewareHandler<{ Bindings: Env; Variables: { api
 export const requireAdminAuth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
   const token = extractApiToken(c.req);
   if (!token) return c.json({ error: "缺少会话", code: "MISSING_SESSION" }, 401);
-  const ok = await verifyAdminSession(c.env.DB, token);
-  if (!ok) return c.json({ error: "会话已过期", code: "SESSION_EXPIRED" }, 401);
+  const settings = await getSettings(c.env);
+  const adminPassword = String(settings.global.admin_password ?? "admin").trim();
+  const ok = (token === adminPassword) || (await verifyAdminSession(c.env.DB, token));
+  if (!ok) return c.json({ error: "会话已过期或密码无效", code: "SESSION_EXPIRED" }, 401);
   return next();
 };
 

@@ -218,6 +218,23 @@ async function getKvStats(db: Env["DB"]): Promise<{
   };
 }
 
+adminRoutes.get("/api/verify", requireAdminAuth, async (c) => {
+  return c.json({ success: true, status: "success" });
+});
+
+adminRoutes.get("/api/status", requireAdminAuth, async (c) => {
+  return c.json({
+    status: "ok",
+    size: 0,
+    revision: "",
+    selection_strategy: "quota",
+  });
+});
+
+adminRoutes.get("/webui/api/verify", async (c) => {
+  return c.json({ success: true, status: "success" });
+});
+
 adminRoutes.post("/api/v1/admin/login", async (c) => {
   try {
     const body = (await c.req.json()) as { username?: string; password?: string };
