@@ -26,6 +26,7 @@ function makeChunk(
   model: string,
   content: string,
   finish_reason?: StreamFinishReason,
+  search_sources?: Array<Record<string, unknown>>,
 ): string {
   return makeDeltaChunk(
     id,
@@ -33,6 +34,7 @@ function makeChunk(
     model,
     content ? { role: "assistant", content } : {},
     finish_reason,
+    search_sources,
   );
 }
 
@@ -42,6 +44,7 @@ function makeDeltaChunk(
   model: string,
   delta: Record<string, unknown>,
   finish_reason?: StreamFinishReason,
+  search_sources?: Array<Record<string, unknown>>,
 ): string {
   const payload: Record<string, unknown> = {
     id,
@@ -56,6 +59,9 @@ function makeDeltaChunk(
       },
     ],
   };
+  if (search_sources && search_sources.length) {
+    payload.search_sources = search_sources;
+  }
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
@@ -226,8 +232,24 @@ export function createOpenAiStreamFromGrokNdjson(
 
       let buffer = "";
 
+      const webSearchUrlsSeen = new Set<string>();
+      const webSearchResults: Array<{ url: string; title: string; type: string }> = [];
+
+      const getSourcesSuffix = () => {
+        if (!webSearchResults.length) return "";
+        if (settings.show_search_sources !== true) return "";
+        const lines = ["\n\n## Sources", "[grok2api-sources]: #"];
+        for (const item of webSearchResults) {
+          const escapedTitle = item.title.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+          lines.push(`- [${escapedTitle}](${item.url})`);
+        }
+        return lines.join("\n") + "\n";
+      };
+
       const flushStop = () => {
-        controller.enqueue(encoder.encode(makeChunk(id, created, currentModel, "", "stop")));
+        const suffix = getSourcesSuffix();
+        const chunk = makeChunk(id, created, currentModel, suffix, "stop", webSearchResults);
+        controller.enqueue(encoder.encode(chunk));
         controller.enqueue(encoder.encode(makeDone()));
       };
 
@@ -304,6 +326,48 @@ export function createOpenAiStreamFromGrokNdjson(
 
             const grok = (data as any).result?.response;
             if (!grok) continue;
+
+            // ── 采集 webSearchResults（搜索信源，多帧累积去重）───────
+            const wsr = grok.webSearchResults;
+            if (wsr && typeof wsr === "object") {
+              const results = wsr.results;
+              if (Array.isArray(results)) {
+                for (const item of results) {
+                  if (item && typeof item === "object" && typeof item.url === "string") {
+                    const url = item.url.trim();
+                    if (url && !webSearchUrlsSeen.has(url)) {
+                      webSearchUrlsSeen.add(url);
+                      webSearchResults.push({
+                        url,
+                        title: typeof item.title === "string" ? item.title.trim() : url,
+                        type: "web",
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
+            // ── 采集 xSearchResults（X/Twitter 帖子信源，多帧累积去重）──
+            const xsr = grok.xSearchResults;
+            if (xsr && typeof xsr === "object") {
+              const results = xsr.results;
+              if (Array.isArray(results)) {
+                for (const item of results) {
+                  if (item && typeof item === "object" && typeof item.postId === "string" && typeof item.username === "string") {
+                    const url = `https://x.com/${item.username}/status/${item.postId}`;
+                    if (!webSearchUrlsSeen.has(url)) {
+                      webSearchUrlsSeen.add(url);
+                      const rawText = typeof item.text === "string" ? item.text.replace(/\s+/g, " ").trim() : "";
+                      const title = rawText
+                        ? `𝕏/@${item.username}: ${rawText.slice(0, 50)}${rawText.length > 50 ? "..." : ""}`
+                        : `𝕏/@${item.username}`;
+                      webSearchResults.push({ url, title, type: "x_post" });
+                    }
+                  }
+                }
+              }
+            }
 
             const userRespModel = grok.userResponse?.model;
             if (typeof userRespModel === "string" && userRespModel.trim()) currentModel = userRespModel.trim();
@@ -468,8 +532,7 @@ export function createOpenAiStreamFromGrokNdjson(
         }
 
         if (!toolDone) {
-          controller.enqueue(encoder.encode(makeChunk(id, created, currentModel, "", "stop")));
-          controller.enqueue(encoder.encode(makeDone()));
+          flushStop();
         }
         if (opts.onFinish) await opts.onFinish({ status: finalStatus, duration: (Date.now() - startTime) / 1000 });
         controller.close();
@@ -509,6 +572,9 @@ export async function parseOpenAiFromGrokNdjson(
   const text = await grokResp.text();
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
 
+  const webSearchUrlsSeen = new Set<string>();
+  const webSearchResults: Array<{ url: string; title: string; type: string }> = [];
+
   let content = "";
   let model = requestedModel;
   for (const line of lines) {
@@ -524,6 +590,48 @@ export async function parseOpenAiFromGrokNdjson(
 
     const grok = (data as any).result?.response;
     if (!grok) continue;
+
+    // ── 采集 webSearchResults（搜索信源，多帧累积去重）───────
+    const wsr = grok.webSearchResults;
+    if (wsr && typeof wsr === "object") {
+      const results = wsr.results;
+      if (Array.isArray(results)) {
+        for (const item of results) {
+          if (item && typeof item === "object" && typeof item.url === "string") {
+            const url = item.url.trim();
+            if (url && !webSearchUrlsSeen.has(url)) {
+              webSearchUrlsSeen.add(url);
+              webSearchResults.push({
+                url,
+                title: typeof item.title === "string" ? item.title.trim() : url,
+                type: "web",
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // ── 采集 xSearchResults（X/Twitter 帖子信源，多帧累积去重）──
+    const xsr = grok.xSearchResults;
+    if (xsr && typeof xsr === "object") {
+      const results = xsr.results;
+      if (Array.isArray(results)) {
+        for (const item of results) {
+          if (item && typeof item === "object" && typeof item.postId === "string" && typeof item.username === "string") {
+            const url = `https://x.com/${item.username}/status/${item.postId}`;
+            if (!webSearchUrlsSeen.has(url)) {
+              webSearchUrlsSeen.add(url);
+              const rawText = typeof item.text === "string" ? item.text.replace(/\s+/g, " ").trim() : "";
+              const title = rawText
+                ? `𝕏/@${item.username}: ${rawText.slice(0, 50)}${rawText.length > 50 ? "..." : ""}`
+                : `𝕏/@${item.username}`;
+              webSearchResults.push({ url, title, type: "x_post" });
+            }
+          }
+        }
+      }
+    }
 
     const videoResp = grok.streamingVideoGenerationResponse;
     if (videoResp?.videoUrl && typeof videoResp.videoUrl === "string") {
@@ -570,9 +678,21 @@ export async function parseOpenAiFromGrokNdjson(
     break;
   }
 
+  // ── 格式化为 ## Sources 段落追加至 content 末尾 ─────────────────
+  if (webSearchResults.length > 0) {
+    if (settings.show_search_sources === true) {
+      const lines = ["\n\n## Sources", "[grok2api-sources]: #"];
+      for (const item of webSearchResults) {
+        const escapedTitle = item.title.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+        lines.push(`- [${escapedTitle}](${item.url})`);
+      }
+      content += lines.join("\n") + "\n";
+    }
+  }
+
   const toolCalls = opts.toolNames?.length ? parseToolCalls(content, opts.toolNames) : [];
   if (toolCalls.length) {
-    return {
+    const resp: Record<string, unknown> = {
       id: `chatcmpl-${crypto.randomUUID()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
@@ -594,9 +714,13 @@ export async function parseOpenAiFromGrokNdjson(
       ],
       usage: null,
     };
+    if (webSearchResults.length > 0) {
+      resp.search_sources = webSearchResults;
+    }
+    return resp;
   }
 
-  return {
+  const resp: Record<string, unknown> = {
     id: `chatcmpl-${crypto.randomUUID()}`,
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
@@ -610,4 +734,8 @@ export async function parseOpenAiFromGrokNdjson(
     ],
     usage: null,
   };
+  if (webSearchResults.length > 0) {
+    resp.search_sources = webSearchResults;
+  }
+  return resp;
 }

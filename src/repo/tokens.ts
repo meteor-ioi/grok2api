@@ -149,7 +149,8 @@ export async function getAllTags(db: Env["DB"]): Promise<string[]> {
 
 export async function selectBestToken(db: Env["DB"], model: string): Promise<{ token: string; token_type: TokenType } | null> {
   const now = nowMs();
-  const isHeavy = model === "grok-4-heavy";
+  const isHeavy = model.endsWith("-heavy") || model === "grok-4-heavy" || model === "grok-420-multi-agent-0309";
+  const isSuperOnly = isHeavy || model === "grok-4.3-beta" || model === "grok-imagine-video";
   const field = isHeavy ? "heavy_remaining_queries" : "remaining_queries";
 
   const pick = async (token_type: TokenType): Promise<{ token: string; token_type: TokenType } | null> => {
@@ -168,7 +169,7 @@ export async function selectBestToken(db: Env["DB"], model: string): Promise<{ t
     return row ? { token: row.token, token_type } : null;
   };
 
-  if (isHeavy) return pick("ssoSuper");
+  if (isSuperOnly) return pick("ssoSuper");
 
   return (await pick("sso")) ?? (await pick("ssoSuper"));
 }
