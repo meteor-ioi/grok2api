@@ -15,11 +15,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PY_MODEL_FILE = ROOT / "app" / "services" / "grok" / "model.py"
+PY_MODEL_FILE = ROOT / "app" / "control" / "model" / "registry.py"
 TS_MODEL_FILE = ROOT / "src" / "grok" / "models.ts"
 TS_SRC_DIR = ROOT / "src"
 
-PY_MODEL_ID_RE = re.compile(r'model_id\s*=\s*"([^"]+)"')
+PY_MODEL_ID_RE = re.compile(r'ModelSpec\(\s*"([^"]+)"')
 TS_MODEL_ID_RE = re.compile(r'^\s*"(?P<id>grok-[^"]+)"\s*:\s*{', re.MULTILINE)
 
 REMOVED_IDENTIFIERS = (
@@ -79,7 +79,7 @@ def main() -> int:
         only_workers = sorted(ts_ids - py_ids)
         lines = ["Model catalog mismatch between python and workers."]
         if only_python:
-            lines.append("Only in app/services/grok/model.py:")
+            lines.append("Only in app/control/model/registry.py:")
             lines.extend(f"  - {mid}" for mid in only_python)
         if only_workers:
             lines.append("Only in src/grok/models.ts:")
